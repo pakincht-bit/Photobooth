@@ -1,0 +1,7 @@
+{
+  "name": "Cupid's Booth",
+  "description": "A romantic, mobile-first interactive photo booth experience.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
