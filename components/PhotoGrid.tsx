@@ -1,5 +1,4 @@
 import React, { useEffect, useState } from 'react';
-import Button from './Button';
 import { RefreshCcw, Share2 } from 'lucide-react';
 import { generateCollage } from '../services/imageUtils';
 
@@ -77,12 +76,6 @@ const PhotoGrid: React.FC<PhotoGridProps> = ({ photos, initialCollage, onRetake 
       </div>
 
       <div className="flex flex-col gap-3 w-full max-w-[340px] pb-8">
-        <Button 
-            variant="primary" 
-            label="Save Photo" 
-            onClick={handleDownload} 
-            className="w-full"
-        />
         
         <div className="flex gap-3">
              <button 
