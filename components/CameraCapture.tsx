@@ -18,8 +18,10 @@ const CameraCapture: React.FC<CameraCaptureProps> = ({ onComplete }) => {
   useEffect(() => {
     const startCamera = async () => {
       try {
+        // Removing specific resolution constraints helps prevent the "zoomed in" effect
+        // on mobile browsers which sometimes switch to a crop mode for high res.
         const mediaStream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: "user", width: { ideal: 1080 }, height: { ideal: 1920 } },
+          video: { facingMode: "user" },
           audio: false
         });
         setStream(mediaStream);
@@ -47,33 +49,49 @@ const CameraCapture: React.FC<CameraCaptureProps> = ({ onComplete }) => {
       const video = videoRef.current;
       const canvas = canvasRef.current;
       
-      // Calculate aspect ratio crop (3:4 vertical)
+      // We want to capture exactly what is shown in the 3:4 container.
+      // The container forces the video to be object-cover within a 3:4 box.
       const aspect = 3/4;
-      let w = video.videoWidth;
-      let h = video.videoHeight;
-      let sx = 0;
-      let sy = 0;
+      
+      // Video intrinsic dimensions
+      const vW = video.videoWidth;
+      const vH = video.videoHeight;
+      const videoAspect = vW / vH;
 
-      if (w / h > aspect) {
-        const newW = h * aspect;
-        sx = (w - newW) / 2;
-        w = newW;
+      // Calculate the crop to match CSS object-cover behavior in a 3:4 container
+      let sx, sy, sW, sH;
+
+      if (videoAspect > aspect) {
+        // Video is wider than 3:4 (e.g. 16:9 or 4:3).
+        // Height matches, width is cropped.
+        sH = vH;
+        sW = vH * aspect;
+        sy = 0;
+        sx = (vW - sW) / 2;
       } else {
-        const newH = w / aspect;
-        sy = (h - newH) / 2;
-        h = newH;
+        // Video is taller than 3:4 (rare for webcam, but possible on mobile portrait native).
+        // Width matches, height is cropped.
+        sW = vW;
+        sH = vW / aspect;
+        sx = 0;
+        sy = (vH - sH) / 2;
       }
 
-      canvas.width = 600; 
-      canvas.height = 800;
+      // Output resolution (high quality)
+      canvas.width = 900; 
+      canvas.height = 1200; // 3:4 ratio
       
       const ctx = canvas.getContext('2d');
       if (ctx) {
+        // Mirror the image
         ctx.translate(canvas.width, 0);
         ctx.scale(-1, 1);
-        ctx.drawImage(video, sx, sy, w, h, 0, 0, canvas.width, canvas.height);
         
-        const dataUrl = canvas.toDataURL('image/jpeg', 0.9);
+        // Draw the cropped portion
+        ctx.drawImage(video, sx, sy, sW, sH, 0, 0, canvas.width, canvas.height);
+        
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.95);
+        
         setFlash(true);
         setTimeout(() => setFlash(false), 200);
         setPhotos(prev => [...prev, dataUrl]);
@@ -138,51 +156,60 @@ const CameraCapture: React.FC<CameraCaptureProps> = ({ onComplete }) => {
   }
 
   return (
-    <div className="relative w-full h-full bg-black overflow-hidden flex flex-col">
+    <div className="relative w-full h-full bg-cupid-50 overflow-hidden flex flex-col items-center justify-center p-4">
       <canvas ref={canvasRef} className="hidden" />
-      <video 
-        ref={videoRef} 
-        autoPlay 
-        playsInline 
-        muted 
-        className="absolute inset-0 w-full h-full object-cover transform -scale-x-100" 
-      />
+      
+      {/* 
+          Frame Container: 
+          Fixes the aspect ratio to 3:4 so user sees exactly what will be captured.
+          This prevents the "zoomed in" feeling of object-cover on a tall screen.
+      */}
+      <div className="relative w-full max-w-[400px] aspect-[3/4] bg-black rounded-sm shadow-2xl overflow-hidden border-[8px] border-white">
+          <video 
+            ref={videoRef} 
+            autoPlay 
+            playsInline 
+            muted 
+            className="w-full h-full object-cover transform -scale-x-100" 
+          />
 
-      {/* Flash */}
-      <div className={`absolute inset-0 bg-white pointer-events-none transition-opacity duration-200 ${flash ? 'opacity-100' : 'opacity-0'}`} />
+          {/* Flash Overlay */}
+          <div className={`absolute inset-0 bg-white pointer-events-none transition-opacity duration-200 ${flash ? 'opacity-100' : 'opacity-0'}`} />
 
-      {/* Overlay UI */}
-      <div className="absolute inset-0 pointer-events-none flex flex-col justify-between p-6 z-20">
-        {/* Progress Dots */}
-        <div className="flex gap-2 justify-center pt-8">
-            {[0, 1].map((i) => (
-                <div key={i} className={`h-3 rounded-full shadow-sm transition-all duration-500 ${photos.length > i ? 'w-8 bg-cupid-300' : 'w-3 bg-white/60'}`} />
-            ))}
-        </div>
-      </div>
-
-      {/* Countdown / Status Message */}
-      <div className="absolute inset-0 flex items-center justify-center z-30 pointer-events-none">
-        {countdown ? (
-          <div key={countdown} className="animate-bounce">
-              <span className="text-[12rem] font-bold text-white font-serif leading-none drop-shadow-2xl opacity-90">
-                {countdown}
-              </span>
+          {/* Countdown Overlay (Centered in frame) */}
+          <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-30">
+            {countdown && (
+              <div key={countdown} className="animate-bounce">
+                  <span className="text-[8rem] font-bold text-white font-serif leading-none drop-shadow-lg opacity-90">
+                    {countdown}
+                  </span>
+              </div>
+            )}
           </div>
-        ) : (
-             !flash && photos.length < 2 && (
-                <div className="bg-white/20 backdrop-blur-md px-8 py-4 rounded-2xl border border-white/40 shadow-xl">
-                    <span className="text-white font-serif text-2xl tracking-wider font-bold shadow-black drop-shadow-md">
-                        {statusMessage}
-                    </span>
-                </div>
-             )
-        )}
       </div>
 
-      {/* Guide Lines */}
-      <div className="absolute inset-0 pointer-events-none z-10 opacity-30">
-         <div className="w-full h-full border-[1px] border-white/50 m-4 rounded-3xl box-border" style={{width: 'calc(100% - 2rem)', height: 'calc(100% - 2rem)'}}></div>
+      {/* Status Message Area (Outside the photo frame) */}
+      <div className="mt-8 h-12 flex items-center justify-center z-20">
+         {!flash && photos.length < 2 && !countdown && (
+            <div className="bg-white/80 backdrop-blur-sm px-6 py-3 rounded-full border border-cupid-200 shadow-md">
+                <span className="text-cupid-500 font-serif text-xl font-bold">
+                    {statusMessage}
+                </span>
+            </div>
+         )}
+      </div>
+
+      {/* Progress Indicators */}
+      <div className="absolute bottom-10 left-0 w-full flex gap-3 justify-center">
+        {[0, 1].map((i) => (
+            <div key={i} className={`h-3 rounded-full transition-all duration-500 shadow-sm border border-cupid-200 ${photos.length > i ? 'w-8 bg-cupid-400' : 'w-3 bg-white'}`} />
+        ))}
+      </div>
+
+      {/* Background decoration to fill space */}
+      <div className="absolute inset-0 pointer-events-none opacity-20 z-0">
+          <div className="absolute -top-20 -left-20 w-64 h-64 bg-cupid-300 rounded-full blur-3xl"></div>
+          <div className="absolute top-1/2 -right-20 w-80 h-80 bg-cupid-200 rounded-full blur-3xl"></div>
       </div>
     </div>
   );
